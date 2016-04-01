@@ -1,0 +1,451 @@
+\documentclass[12]{ansnse}
+\usepackage{authblk}
+\usepackage{layouts}
+\usepackage{verbatim}
+\usepackage{todonotes}
+\usepackage[margin=1in]{geometry}
+\usepackage{lipsum}
+\usepackage[tbtags]{amsmath}
+\usepackage[lofdepth=2]{subfig}
+\usepackage{siunitx}
+\usepackage{hyperref}
+\usepackage{bm}
+\usepackage[nolists]{endfloat}
+
+\hypersetup{colorlinks=true,
+citecolor=black,
+linkcolor=black}
+
+% \usepackage[urw-garamond]{mathdesign}
+% \usepackage[sc]{mathpazo}
+% \linespread{1.05}         % Palatino needs more leading (space between lines)
+
+\newcommand{\A}{\ensuremath{\mathcal{A}}}
+\newcommand{\qp}{q^{(+)}(x)}
+\newcommand{\qm}{q^{(-)}(x)}
+\newcommand{\op}[1]{\ensuremath{\bm{\mathsf{#1}}}}
+\newcommand{\dd}{\ensuremath{\mathop{}\!\mathrm{d}}}
+\newcommand{\vP}{\ensuremath{v_{\Pi}}}
+\newcommand{\Lx}{\ensuremath{\Lin_b(x)}}
+\newcommand{\Lin}{\ensuremath{\mathcal{L}}}
+\newcommand{\vL}{\ensuremath{v_{\Lin}}}
+\newcommand{\xmid}{\ensuremath{x_{b,\mathrm{mid}}}}
+
+\setlipsumdefault{1}
+
+\author[1,2]{Jeremy Lloyd Conlin\footnote{\texttt{jlconlin@lanl.gov}}}
+\author[2]{James Paul Holloway}
+\affil[1]{\normalsize\emph{Los Alamos National Laboratory\authorcr}
+\emph{PO Box 1663, MS F663, Los Alamos, NM 87545}}
+\affil[2]{\normalsize\emph{University of Michigan, College of Engineering\authorcr}
+\emph{Department of Nuclear Engineering and Radiological Sciences\authorcr}
+\emph{1221 Beal Avenue, Ann Arbor, MI  48109-2106}}
+
+\title{\sffamily\bfseries\Large Monte Carlo Application of Arnoldi's Method for Acceleration of Eigenvalue and Fission Source Convergence}
+
+\date{}
+
+\begin{document}
+\maketitle
+\ansabstract{This paper introduces the explicitly restarted Arnoldi's method for calculating eigenvalues and eigenvectors in a Monte Carlo criticality calculation.  Arnoldi's method is described along with the power method.  The power method has been used for decades for Monte Carlo criticality calculations despite the availability of other algorithms with better convergence properties.  The Monte Carlo application of the transport-fission operator of the Boltzmann transport equation is defined and the Monte Carlo implementation of both Arnoldi's method and the power method are described.  A brief discussion of eigenvalue and fission source convergence is given.  Numerical simulations of 1-D slab geometries are presented, demonstrating the convergence of both the eigenvalue and fission source (as measured by the Shannon entropy) for both Arnoldi's method and the power method.  The results show that Arnoldi's method does not need to discard iterations like the power method because both the eigenvalue and fission source appear to converge immediately, even for problems with high dominance ratios.
+}
+
+\begin{doublespace}
+%\begin{multicols}{2}
+\begin{comment}
+ \pagediagram
+\currentpage
+\pagedesign
+
+The textwidth is \printinunitsof{pt}\prntlen{\textwidth} which is also \printinunitsof{in}\prntlen{\textwidth} or \printinunitsof{mm}\prntlen{\textwidth}. 
+
+The textheight is \printinunitsof{pt}\prntlen{\textheight} which is also \printinunitsof{in}\prntlen{\textheight} or \printinunitsof{mm}\prntlen{\textheight}. 
+\end{comment}
+
+\section{Introduction}
+For decades\cite{Goad:1959A-Mon-0,Kaplan:1958Monte-0,Lieberoth:1968A-Mon-0,Mendelson:1968Monte-0} the power method has been the algorithm of choice for estimating the fundamental eigenvalue and eigenvector of the transport-fission operator of the Boltzmann transport equation in Monte Carlo criticality calculations.  The power method is a robust application of a Krylov subspace method.  A Krylov subspace method is one where only the knowledge of the application of a linear operator to a vector is required to estimate the eigenvalues and eigenvectors of the linear operator; an explicit (e.g. matrix) form of the linear operator is not necessary.  The Monte Carlo implementation of the power method for neutral particle transport applications is straightforward making it desirable for criticality applications.
+
+Despite the robust and uncomplicated features of the power method, it suffers from slow convergence to the desired eigenvalue and fission source.  The convergence rate is proportional the dominance ratio, the ratio of the first higher-order eigenvalue to the fundamental eigenvalue, \[DR = \lambda_1/\lambda_0.\]  For many particle transport calculations of interest, this ratio is close to unity causing slow convergence.
+
+Much work\cite{Brown:2009A-Rev-0} has been done during the last decade investigating the convergence of the both the eigenvalue and fission source in Monte Carlo criticality applications.  \citet{Ueki:2003Infor-0,Ueki:2005Stati-0} have shown the necessity of performing many discarded power iterations before the results from the power method iterations can be used for estimating the fundamental eigenvalue without biasing the results with bad eigenvalue estimates or a poorly converged fission source.
+
+Arnoldi's method\cite{Arnoldi:1951The-P-0} is another Krylov subspace method commonly used to estimate eigenvalues and eigenvectors of linear operators for which an explicit form of the operator is not known or is expensive to calculate and/or store.  \citet{Warsa:2004Krylo-0} have shown Arnoldi's method to provide a significant improvement over the power method in deterministic calculations, achieving cost savings of 1--2 orders of magnitude using Arnoldi's method over the power method.  For Monte Carlo criticality calculations, we have demonstrated\cite{Conlin:2008Arnol-0} the capability of Arnoldi's method in calculating multiple eigenvalues and eigenvectors for 1-D geometries.  
+
+In this paper we will describe Arnoldi's method can be used to accelerate the convergence of the eigenvalue and the fission source as compared to the power method in a Monte Carlo criticality application.  In Section \ref{sec:KrylovMethods}, we review the power method (Section \ref{sec:PowerMethod}) and introduce Arnoldi's method and our one-dimensional implementation will be described (Section \ref{sec:ArnoldiExplanation}).  In Section \ref{sec:Convergence}, we briefly review how fission source convergence is quantified and describe how it is done with Arnoldi's method.  In Section \ref{sec:Numerical}, we will compare Arnoldi's method to the power method for a few problems with high dominance ratios.  In Section \ref{sec:Conclusions} we conclude and propose future research for Arnoldi's method.  %These problems were chosen because their eigenvalues have been published and the difficulties in converging to the correct eigenvalue and fission source have been investigated; we will be able to compare our results to those previously published.
+
+\section{Monte Carlo Eigenvalue Calculations with Krylov Subspace Methods}\label{sec:KrylovMethods}
+Krylov subspace methods\cite{Saad:1992Numer-0} approximate solutions (i.e. eigenvalues and eigenvectors) from a subspace of the form
+\begin{equation}
+    \mathcal{K}_m~=~\mathrm{span}\left\{v, \op{A} v, \op{A}^2v, \ldots , \op{A}^{m-1}v\right\},
+    \label{eq:Krylov}
+\end{equation}
+where $v$ is some function or vector and $\op{A}$ is a linear operator.  The basis vectors of the Krylov subspace,
+\begin{equation}
+    \mathcal{K}_m~=~\mathrm{span}\left\{v_1, v_2, \ldots, v_{m}\right\},
+    \label{eq:KrylovBasisVectors}
+\end{equation}
+are the results of applying the linear operator to $v$ multiple times, $v_i = \op{A}^{i-1}$.  Note that to calculate the $n$-th basis vector, one doesn't need to apply \op{A} \mbox{$(n-1)$} times; it is sufficient to apply \op{A} to the previously calculated basis vector.  Knowing this, we can see that Krylov subspace is calculated iteratively with one basis vector calculated at each iteration.
+
+Krylov subspace methods do not require an explicit form of the operator $\op{A}$, but do rely on the existence of a procedure or algorithm to apply the linear operator, $\op{A}$, to a vector, $v$.
+
+The iterative process of creating a Krylov subspace by the application of the linear operator on a vector makes Krylov subspace techniques attractive to Monte Carlo particle transport calculations.  To define the linear operator for Monte Carlo criticality applications we begin with the Boltzmann transport eigenvalue equation
+\begin{multline}
+    \mathbf{\Omega}\cdot\mathbf{\nabla}\psi(\mathbf{r},\mathbf{\Omega})+\Sigma_t\psi(\mathbf{r},\mathbf{\Omega}) = \\
+    \frac{\Sigma_s}{4\pi}\int \psi(\mathbf{r},\mathbf{\Omega})\;d\Omega + \frac{1}{k}\frac{\nu\Sigma_f}{4\pi}\int \psi(\mathbf{r},\mathbf{\Omega})\;d\Omega,
+\end{multline}
+and write it in operator form
+\begin{subequations}\begin{align}
+    (\op{L} + \op{C} - \op{S})\psi &= \frac{1}{k}\op{F}\psi \\
+    \op{T}\psi &= \frac{1}{k}\op{F}\psi \label{eq:Opr}
+\end{align}\end{subequations}
+where $\op{L}, \op{C},$ and $\op{S}$ are the leakage, collision, and scattering operators respectively and $\op{F}$ is the fission operator.  The operator $\op{T}$ is the transport-collision operator.  The left-hand side represents the neutron loss and scattering mechanisms and the right-hand side represents the neutron gain mechanism.  We define
+\begin{equation}
+    v \equiv \op{F}\psi
+\end{equation}
+as the Monte Carlo fission source and
+\begin{equation}
+    \A \equiv \op{F}\,\op{T}^{-1}
+\end{equation}
+as the transport-fission operator.  We can manipulate \eqref{eq:Opr} to obtain
+\begin{equation}
+    \A v = kv. \label{eq:evalue}
+\end{equation}
+This is a standard eigenvalue problem with $k$ and $v$ the eigenvalue and eigenvector of the transport-fission operator, \A.  The operation of \A{} on any fission source can be evaluated by Monte Carlo, as described next.
+\subsection{Monte Carlo Application of Transport- Fission Operator on Fission Source}\label{sec:AApplication}
+A fission source, $v$, is a distribution of fission neutrons, or---in the case of the first iteration---a predefined list of locations where fission neutrons may be found.  The Monte Carlo application of \A{} to $v$ is done by randomly picking fission neutrons from the fission source, transporting them through the medium and storing any new neutrons created by fission.  These new fission neutrons make up a new fission source and are the result of the operation of \A{} on $v$.  It is important to note that any of the standard variance reduction techniques can be used to reduce the statistical uncertainty of the application of \A.  
+
+This application of the transport-fission operator will be used in both the power method and Arnoldi's method.  The only difference between the two applications is the way that fission neutrons are sampled from the fission source; in the power method, fission neutrons are sampled from discrete fission sites while in Arnoldi's method, fission neutrons are sampled from a discretized fission source.  The specifics of each method are described in the following two sections.
+
+\subsection{Power Method}\label{sec:PowerMethod}
+The power method is a straightforward implementation of a Krylov subspace method.  It begins with an estimate of the fundamental eigenvalue, $k$, and eigenvector $v$.  At each iteration the linear operator, \A, is applied to a fission source, which is then normalized by the estimate of the eigenvalue,
+\begin{equation}
+    v_{j+1} = \frac{1}{k_j}\A v_j.
+    \label{eq:PowerMethodVector}
+\end{equation}
+Here $v_{j}$ is the estimate of the fundamental eigenvector calculated in the \mbox{$j$-th} iteration of the power method.  The fundamental eigenvalue is estimated in the \mbox{$\left(j+1\right)$-th} iteration as
+\begin{equation}
+    k_{j+1} = k_j\frac{\int \A v_j}{\int v_j} = k_j \frac{\int v_{j+1}}{\int v_j}.
+    \label{eq:PowerMethodValue}
+\end{equation}
+Using Eqs. \eqref{eq:PowerMethodVector}--\eqref{eq:PowerMethodValue} and knowing how to apply the transport-fission operator as discussed in the previous section, we can use the power method to estimate the fundamental eigenvalue and eigenvector of the transport-fission operator, \A.  Note that the power method only stores the previous fission source and so discards information about the previously calculated basis vectors of the Krylov subspace.
+
+The eigenvalue estimates calculated at the end of each power iteration are stored.  The mean, $\overline{k}$, and variance, $\sigma^2$, of these eigenvalue estimates can be estimated as
+\begin{align}
+    \overline{k} &= \frac{1}{N}\sum_{j=1}^N k_j \label{eq:meanEigenvalue} \\
+    \sigma^2 &= \frac{1}{N}\frac{1}{N-1} \sum_{j=1}^N \left(k_j - \overline{k}\right)^2, \label{eq:varEigenvalue}
+\end{align}
+where $N$ is the number of eigenvalue estimates.  The standard deviation, $\sigma$, of the mean of the eigenvalue estimates is a measure of the statistical uncertainty in the mean eigenvalue estimate.
+
+\begin{comment}
+The figure of merit (FOM) is a measure of the efficiency of the calculation.  The FOM is calculated as
+\begin{equation}
+    \mathrm{FOM} = \frac{1}{\sigma^2 T}.
+    \label{eq:FOM}
+\end{equation}
+where $T$ is the computational time spent and $\sigma^2$ is the variance.
+\end{comment}
+
+To examine the convergence rate of the power method we note that in Eq. \eqref{eq:PowerMethodVector}, $v_{j} = \A^{j}v$.  We can write $v_j$ as a linear combination of the eigenvectors of \A
+\begin{align}
+    v_{j+1} &= c_0\A^{j+1}x_0 + \cdots + c_{n-1}\A^{j+1}x_{n-1} \\
+    \A v_{j} &= c_0\lambda_0^{j+1}x_0 + \cdots + c_{n-1}\lambda_{n-1}^{j+1}x_{n-1}
+    \label{eq:LinearCombination}
+\end{align}
+where $\lambda_0, \ldots, \lambda_{n-1}$ and $x_0, \ldots, x_{n-1}$ are the \mbox{$n-1$} eigenvalues and eigenvectors of \A{} with $\left(\lambda_0, x_0\right)$ being the fundamental eigenpair; $c_0, \ldots, c_{n-1}$ are just some constants.
+
+With a little bit of algebra we can rewrite Eq. \eqref{eq:LinearCombination} as
+\begin{equation}
+    \A v_j = c_0x_0 + \mathcal{O}(\lambda_1/\lambda_0)^j.
+    \label{eq:PowerMethodOrderDemonstration}
+\end{equation}
+Eq. \eqref{eq:PowerMethodOrderDemonstration} is equivalent to Eq. \eqref{eq:PowerMethodVector} and shows that the power method converges no faster than the dominance ratio $\lambda_1/\lambda_0$.
+
+\subsection{Arnoldi's Method}\label{sec:ArnoldiExplanation}
+Arnoldi's method\cite{Arnoldi:1951The-P-0} iteratively builds a Krylov subspace by applying the linear operator to a vector in the same manner as in the power method.  However, Arnoldi's method retains, orthogonalizes, and normalizes the basis vectors at each iteration.  Arnoldi's method stores all the computed basis vectors, and uses the information so retained to improve the convergence compared to the power method.  The orthonormalized basis vectors are called Arnoldi vectors.
+
+Arnoldi's method begins like the power method with a vector which is then normalized
+\begin{equation}
+    v_1 = \frac{v}{\|v\|_2},
+\end{equation}
+where
+\begin{equation}
+    \|v\|_2 = \langle v, v\rangle^{1/2}
+\end{equation}
+is just the Euclidean norm of the vector $v$.  $v_1$ is the first basis vector of the Krylov subspace.
+
+At the $m$-th iteration of Arnoldi's method the linear operator is applied to a vector, $v_m$, giving $\A v_m$.  This result is then orthogonalized against all previously calculated Arnoldi vectors
+\begin{equation}
+    \tilde{v}_{m+1} = \A v_m - \sum_{j=1}^m h_{jm}v_j,
+    \label{eq:ArnoldiOrthogonalization}
+\end{equation}
+where
+\begin{equation}
+    h_{jm} = \langle \A v_m, v_j\rangle
+    \label{eq:h_jm}
+\end{equation}
+is the inner product between $\A v_m$ and $v_j$,
+\begin{equation}
+    \langle \A v_m, v_j\rangle = \int \left[\A v_m(x)\right]v_j(x) \dd x.
+    \label{eq:hInnerProduct}
+\end{equation}
+The orthogonalization utilizing Eqs. \eqref{eq:ArnoldiOrthogonalization} and \eqref{eq:h_jm} is a Gram-Schmidt orthogonalization.  At the end of the iteration, $\tilde{v}_{m+1}$ is normalized,
+\begin{equation}
+    v_{m+1} = \frac{\tilde{v}_{m+1}}{h_{m+1, m}},
+    \label{eq:ArnoldiNormalization}
+\end{equation}
+where
+\begin{equation}
+    h_{m+1,m} = \|\tilde{v}_{m+1}\|_{2}.
+    \label{eq:FinalNormalization}
+\end{equation}
+\begin{comment}
+In Eqs. \eqref{eq:ArnoldiOrthogonalization}--\eqref{eq:ArnoldiNormalization}
+\begin{equation}
+    h_{jm} = \langle \A v_m, v_j\rangle
+    \label{eq:h_jm}
+\end{equation}
+\end{comment}
+
+The orthogonalization and normalization of the Arnoldi vectors involves taking the inner product between vectors.  The results of these inner products ($h_{jm}$ and $h_{m+1,m}$ in Eqs. \eqref{eq:h_jm} and \eqref{eq:FinalNormalization} respectively) form an upper-Hessenberg matrix, $H_{m+1,m}$.  (An upper-Hessenberg matrix is upper triangular but with the first subdiagonal non-zero.)  The upper-Hessenberg matrix, $H_{m+1, m}$, is the projection of \A{} onto the Krylov subspace.
+
+We can write the $m$-th Arnoldi iteration in matrix form as
+\begin{equation}
+    \A V_m = V_{m+1} H_{m+1,m}.
+\end{equation}
+The elements of $H_{m+1,m}$ are the results of the inner product calculations and the columns of $V$ are the orthonormalized Arnoldi vectors.  If we separate the last column of $V_{m+1}$ and the last row of $H_{m+1,m}$ we can also write this as\cite{Watkins:2002Funda-0}
+\begin{equation}
+    \A V_m = V_mH_m + v_{m+1}h_{m+1,m}e_m^T
+    \label{eq:ArnoldiFactorization}
+\end{equation}
+where $v_{m+1}$ is the Arnoldi vector calculated during the $m$-th iteration, $h_{m+1,m}$ is the normalization factor for $v_{m+1}$ and $e_m$ is the $m$-th standard basis vector.  Eq. \eqref{eq:ArnoldiFactorization} is called the Arnoldi factorization.  During the $m$-th Arnoldi iteration, we add a row and a column to the Arnoldi factorization.  
+
+Using the Arnoldi factorization we can calculate estimates of the eigenvalues and eigenvectors of \A.  The upper-Hessenberg matrix $H_m$ is the projection of \A{} onto the Krylov subspace.  In practice, $H_m$ is generated after a small number of iterations and thus is small and its eigenvalue and eigenvectors can easily be calculated with whatever method is desired, such as the standard QR method which we have used for all our calculations.  The eigenpairs of $H_m$, $\left(\mu_i,x_i\right)$, can be used to find the Ritz pairs---approximate eigenpairs---of \A.  
+
+To calculate the Ritz pairs of \A, we multiply the Arnoldi factorization on the right by an eigenvector of $H_m$, $x_i$
+\begin{align}
+    \A V_mx_i &= V_m\left( H_mx_i \right) + v_{m+1}h_{m+1,m}e_m^Tx_i \\
+    \A V_mx_i &= V_m\left( \mu_ix_i \right) + v_{m+1}h_{m+1,m}e_m^Tx_i \\
+    \A y_i &= \mu_iy_i + v_{m+1}h_{m+1,m}e_m^Tx_i,
+    \label{eq:ArnoldiFactorizationRitzPair}
+\end{align}
+where $y_i = V_mx_i$.  We can see that the Ritz pair $\left(\mu_i, y_i\right)$ is an estimate of an eigenpair of \A.  Note that we can calculate multiple Ritz pairs of \A{} from multiple eigenpairs of $H_m$.
+
+The term, $v_{m+1}h_{m+1,m}e_m^Tx_i$ in Eq. \eqref{eq:ArnoldiFactorizationRitzPair} is the residual of the calculation; the absolute value of the residual can give an estimate of how well the Arnoldi process has converged.  As the residual becomes increasingly small, the Ritz pair more nearly satisfies the eigenvector equation, and will converge to an exact eigenpair.
+
+If the initial guess $v$ is an eigenvector of \A{} then the magnitude of the residual will be zero after one iteration.  If the initial guess is a linear combination of $n$ eigenvectors of \A{} then the magnitude of the residual will become zero after $n$ iterations.  The closer our initial guess is to our desired eigenvectors, the faster Arnoldi's method will converge to the desired answer.  
+
+% The residual will not be discussed in this paper.  In a previous paper\cite{Conlin:2009Relax-0} we have shown how the residual can be used to accelerate the Arnoldi calculation by reducing the precision of the application of the transport-fission operator to a fission source.
+
+\subsection{Monte Carlo Implementation of Arnoldi's Method}\label{sec:MCImplementation}
+A Monte Carlo implementation of Arnoldi's method follows from the mathematical description given in the previous section with a definition of how to take the inner product of two fission sources.  Additionally, a normalization of the Monte Carlo application of the transport-fission operator must be performed before orthogonalization of the Arnoldi vectors.  Consideration must also be given to sampling from a potentially negative fission source.
+
+\subsubsection{Normalization of Fission Sources}
+In Arnoldi's method, the application of the transport-fission operator, \A, is applied in the same manner as it was in the power method; particles are sampled from a fission source, the particles are transported, and a new fission source is created from the induced fission neutrons produced during the transport of the source neutrons.  When the application of \A{} is complete, the new fission source is normalized by multiplying by the integral of the absolute value of the previous source
+\begin{equation}
+    v'_{m+1}(x) = \A v_m(x) \frac{1}{N}\int \left|v_m(x)\right| \dd x.
+    \label{eq:ArnoldiFissionSourceNormalization}
+\end{equation}
+Here $v_m(x)$ is the source we sample from, $\A v_{m}(x)$ is the new source created after sampling from $v_{m}(x)$ and transporting.  This normalization is similar to the normalization performed in the power method by multiplying the previous eigenvalue estimate as shown in Eq. \eqref{eq:PowerMethodValue}.
+
+Using $v'_{m+1}(x)$ as the result of applying the transport-fission operator, Arnoldi's method continues with the orthogonalization of the fission source
+\begin{equation}
+    \tilde{v}_{m+1} = v'_{m+1}(x) - \sum_{j=1}^m h_{jm}v_j,
+    \label{eq:MCArnoldiOrthogonalization}
+\end{equation}
+and the inner product of one Arnoldi vector to the new Arnoldi vector 
+\begin{equation}
+    h_{jm} = \langle v'_{m+1}, v_j\rangle.
+    \label{eq:MCh_jm}
+\end{equation}
+The normalization of the fission source is unchanged from Eq. \eqref{eq:ArnoldiNormalization} in the Monte Carlo implementation with the above definitions.
+
+\subsubsection{Inner Product of Two Fission Sources}\label{sec:InnerProduct}
+The inner product of two vectors is just the sum of element-wise multiplication of the two vectors.  No simple definition exists for the inner product of two fission sources.  
+
+
+In order to define the inner product of two fission sources, we have taken the simple approach and discretized our fission source into $B$ equally spaced spatial bins and represent the fission source in each bin with a first-order accurate spatial approximation
+\begin{equation}
+    \vL(x) = \sum_{b=1}^B \Lx,
+    \label{eq:LinearSource}
+\end{equation}
+where
+\begin{equation}
+    \Lx = \begin{cases}
+        \alpha_b + \beta_b x, & x_b \leq x < x_{b+1} \\
+        0, & \mathrm{otherwise}.
+    \end{cases}
+    \label{eq:SecondOrderApproximation}
+\end{equation}
+
+Representing the fission source with $\vL(x)$, the Arnoldi vector corresponding to a fission source is
+\begin{equation}
+    \vL \left[\alpha_1, \beta_1, \alpha_2, \beta_2, \ldots, \alpha_B, \beta_B\right]^T, 
+    \label{eq:DiscretizedArnoldiVector}
+\end{equation}
+and the inner product between two vectors is simply the sum of element-wise multiplication of two vectors as before
+\begin{align}
+    h_{jm} &= \langle\vL^{(m)}, \vL^{(j)}\rangle \\
+    &= \sum_{b=1}^B \alpha_b^{(m)}\alpha_b^{(j)} + \beta_b^{(m)}\beta_b^{(j)}
+    \label{eq:DiscretizedInnerProduct}
+\end{align}
+
+To determine the coefficients $\alpha_b$ and $\beta_b$ for each bin we must evaluate two integrals, something that is is well suited for Monte Carlo methods.  We first define the midpoint of bin $b$
+\begin{equation}
+    \xmid = \frac{x_{b+1}+x_b}{2}.
+    \label{eq:xmid}
+\end{equation}
+Taking the zeroth and first spatial moments over the bin
+\begin{subequations}
+    \begin{align}
+        \int_{x_b}^{x_{b+1}} \Lx \dd x &= \frac{1}{2}\left(x_{b+1} - x_b\right)\left[2\alpha_b + \beta_b\left(x_{b+1} + x_b\right)\right] \label{eq:ZerothMoment} \\
+        \int_{x_b}^{x_{b+1}} \left(x-\xmid\right)\Lx \dd x &= \frac{\beta_b}{12}\left(x_{b+1} - x_b\right)^3, \label{eq:FirstMoment}
+    \end{align}
+        \label{eq:SpatialMoments}
+\end{subequations}
+gives two equations for $\alpha_b$ and $\beta_b$.  The left-hand side of equations \ref{eq:SpatialMoments} can be evaluated via Monte Carlo
+\begin{subequations}\label{eq:SpatialMomentsMC}
+    \begin{align}
+        \int_{x_b}^{x_{b+1}} \Lx \dd x &= \frac{1}{N}\sum_{i=1}^N \omega_i  \label{eq:ZerothMomentMC} \\
+        \int_{x_b}^{x_{b+1}} \left(x_i-\xmid\right)\Lx \dd x &= \frac{1}{N}\sum_{i=1}^N \left(x-\xmid\right)\omega_i \label{eq:FirstMomentMC}
+    \end{align}
+\end{subequations}
+where $N$ is the number of source particles and $\omega_i$ and $x_i$ are the weight and position of the particle that induces fission in bin $b$.  By equating equation \ref{eq:ZerothMoment} with equation \ref{eq:ZerothMomentMC} and equation \ref{eq:FirstMoment} with equation \ref{eq:FirstMomentMC} we can obtain expressions for $\alpha_b$ and $\beta_b$ respectively
+\begin{subequations}
+    \begin{align}
+        \alpha_b &= \frac{1}{x_{b+1}-x_b}\frac{1}{N} \sum_{i=1}^N \omega_i - \frac{\beta_b}{2}\left(x_{b+1}+x_b\right) \label{eq:alpha_b} \\
+        \beta_b &= \frac{12}{\left(x_{b+1}-x_b\right)^3}\frac{1}{N} \sum_{i=1}^N \left(x_i-\xmid\right)\omega_i. \label{eq:beta_b}
+    \end{align}
+    \label{eq:ExpansionCoefficients}
+\end{subequations}
+For Monte Carlo particle transport this means every time a fission occurs in bin $b$ the tallies $\omega_i$ and  $\left(x_i - \xmid\right)\omega_i$ are recorded.  
+
+The discretization of the fission source is a simple way of providing a way to calculate the inner product between fission sources.  The discretization of the fission source can introduce a bias into the result and so care must be taken with how the geometry is discretized.  Using a first-order accurate approximation to the fission source allows us to compute the inner product between two fission sources.  Using a first-order accurate approximation greatly improves the estimate of the eigenvectors of \A{} as well as reducing the statistical uncertainty in the estimated eigenvalues as reported by \citet{Conlin:2009Secon-0}.  Some ideas have been proposed\cite{Booth:2010Exact-0} that may eliminate the need to discretize the fission source in order to define the inner product, however this has not yet been fully investigated.
+
+\subsubsection{Negative Fission Sources}\label{sec:NegativeSources}
+During the orthogonalization and normalization steps of Arnoldi's method, the fission source will inevitably have regions that are negative.  This occurs because we are orthogonalizing multiple basis vectors, so only one of them can be single-signed.  This requires that the Monte Carlo procedure sample a multi-signed source and work with negative weight particles.  
+
+To sample from a distribution, it must be everywhere positive and integrate to 1.  If $p(x)$ is a probability distribution function, the quantity $p(x)\dd x$ is the probability of choosing a point in $\dd x$ about $x$.  For a fission source $v(x)$ which may have negative regions it is first normalized such that
+\begin{subequations}\begin{align}
+    \int \left|v(x)\right| \dd x &= q \\
+    p(x) = \frac{\left|v(x)\right|}{q}.
+    \label{eq:FissionSourceNormalization}
+\end{align}\end{subequations}
+With this normalization, the quantity $p(x) \dd x$ is the probability of choosing a point in $\dd x$ about $x$.  A neutron position $x_s$ is sampled from $p(x)$ and is given an initial weight of
+\begin{equation}
+    \omega = \frac{v(x_s)}{\left|v(x_s)\right|}, 
+    \label{eq:InitialWeight}
+\end{equation}
+or, alternatively
+\begin{equation}
+    \omega = \begin{cases}
+        1, & v(x_s) > 0 \\
+        -1, & v(x_s) < 1.
+    \end{cases}
+    \label{eq:OtherInitialWeight}
+\end{equation}
+Neutrons sampled where \mbox{$v(x_s) < 0$} reduce the tally where they score; neutrons sampled where \mbox{$v(x_s) > 0$} contribute positively to the tally where they score.  A neutron is never sampled where \mbox{$v(x_s) = 0$} because there the probability of choosing this point is exactly zero.  
+
+Once a particle has been sampled, Monte Carlo transport proceeds as usual, with the neutron scoring $\omega\left(\nu\Sigma_f/\Sigma_T\right)$ in the proper bin at each collision.  If non-analog Monte Carlo is being done, particle weight is reduced at each collision and Russian Roulette is played if the absolute value of the weight becomes small.  Giving a neutron a signed weight does not interfere with any of the standard variance reduction or tallying techniques.
+
+\subsubsection{Explicitly Restarted Arnoldi's Method}
+As the Arnoldi process proceeds, the estimate of the fundamental eigenvalue and eigenvector improves with each iteration.  After a few iterations we have a better estimate of the fundamental eigenpair than what we started with.  However with each additional iteration the new Arnoldi vector must be orthogonalized against one more vector increasing the computational expense.  In addition, one more Arnoldi vector must be stored, increasing the memory requirements.  
+
+To reduce the computational and memory requirements Arnoldi's method can be restarted\cite{Saad:1980Varia-0} after a set number of iterations.  This is known as explicitly restarted Arnoldi's method.  Arnoldi's method is restarted with a linear combination of the best estimate of the desired eigenvectors as the starting vector for the next set of iterations.  Each set of iterations will be referred to as an Arnoldi \emph{restart} and each restart consists of the same number of Arnoldi \emph{iterations}.  At the end of every restart, estimates of the desired Ritz pairs of \A{} are calculated and stored; the mean and variance can be calculated just like in the power method.  
+
+\section{Eigenvalue and Fission Source Convergence}\label{sec:Convergence}
+Before a Monte Carlo criticality code can begin to calculate the mean and variance of the eigenvalue estimates, the eigenvalue estimates must be converged.  If the estimates are not converged, the mean will include poor estimates of the eigenvalue.  These poor estimates affect the may cause the mean eigenvalue estimate to be biased.  For this reason, all Monte Carlo codes\cite{Team:2002MCNP--0} will discard some iterations before the eigenvalue estimates are stored.  However it is often difficult to determine convergence and Monte Carlo codes do not determine this internally; the number of iterations to discard must be input by the user.
+
+In addition to the eigenvalue convergence, the fission source must also be converged.  \citet{Ueki:2005Stati-0} have demonstrated that the apparent convergence of the eigenvalue estimates does not imply that the fission source has converged.  If a fission source has not converged, then the modeled system is not being adequately sampled and the estimated eigenvalue and eigenvector of the transport-fission operator may be incorrect.  
+
+\citet{Ueki:2005Stati-0} have come up with a way to quantify the convergence of the fission source, thus assisting the Monte Carlo user in identifying when their simulation has converged.  They have used the Shannon entropy
+\begin{equation}
+    H\left(S(x)\right) \equiv -\sum_{b=1}^B S_b \log\left(S_b\right)
+    \label{eq:ShannonEntropy}
+\end{equation}
+as a measure of the convergence of the fission source.  Here $H$ is the Shannon entropy and $S_b$ is number of fission neutrons in spatial bin $b$ of the fission source $v$,
+\begin{equation}
+    S_b = \int_{x_{b}}^{x_{b+1}} v(x) \dd x.
+\end{equation}
+As the calculation proceeds, the Shannon entropy will converge to some value; the actual value of the Shannon entropy is not important (as we will see later).  What is important is that it converges to some value.
+
+Calculating the Shannon entropy requires discretizing the fission source and counting the number of neutrons in each spatial bin.  This does not affect the transport of the source since the discretization is only used for calculating the Shannon entropy.  In Arnoldi's method, we calculate the Shannon entropy from the Ritz vectors of \A, and not from the fission source or Arnoldi vector.  Using a first-order accurate spatial approximation as described in Section \ref{sec:InnerProduct} we can define
+\begin{equation}
+    S_b = \int_{x_b}^{x_{b+1}} \left|\Lin_b(x)\right| \dd x.
+\end{equation}
+
+With this definition of the Shannon entropy, the convergence of the fission source can be quantified.  The value to which the Shannon entropy converges is not critical; what is critical is that the Shannon entropy converges to some value.  In a Monte Carlo application, a converged value (i.e. Shannon entropy, eigenvalue estimates) is one where the individual values are randomly scattered about the mean of the individual values.
+
+\section{Numerical Calculations}\label{sec:Numerical}
+To demonstrate the differences in convergence rates between Arnoldi's method and the power method, we have performed a few 1-D Monte Carlo simulations; one homogeneous slab and two heterogeneous.  In all of these simulations, the number of histories tracked and the number of iterations is the same between the power method and Arnoldi's method.  However, the number of eigenvalue estimates and Shannon entropy measurements are much less for Arnoldi's method than for the power method; Arnoldi's method estimates an eigenvalue at the end of a restart (several iterations) while the power method estimates an eigenvalue at every iteration.  In these simulations, we don't differentiate between active or inactive iterations since we are only interested in the convergence.  The eigenvalues plotted are the eigenvalue estimates and \emph{not} the mean of the eigenvalue estimates.
+
+The geometries and materials for these examples were picked from published results\cite{Rathkopf:1986The-F-0,Ueki:2005Stati-0} so that the estimated eigenvalue from the power method and Arnoldi's method could be compared to known results.
+
+\subsection{Homogeneous Slab}
+The first simulation we show here is a homogeneous 1-D slab with vacuum boundary conditions with \mbox{$\nu\Sigma_f = 1.0$}, \mbox{$\Sigma_a = 0.2$}, \mbox{$\Sigma_s = 0.8$}, and  \mbox{$\Sigma_t = 1.0$}.  This is the same material used in published results\cite{Rathkopf:1986The-F-0}, but we have set our slab to be 50 mfp thick.  A reference fundamental eigenvalue was calculated using an $S_N$ code with 32 quadrature set and 200 equally spaced regions.  The fundamental eigenvalue was calculated as $\lambda_0 = 0.997520$.  Arnoldi's method had 25 iterations per restart and both Arnoldi and the power methods track \num{5E5} particles per iteration.
+
+The convergence of the eigenvalue and Shannon entropy are shown in Figure \ref{fig:Homogeneous}; the eigenvalue estimates are shown on the bottom and the Shannon entropy is shown on top.  The dashed black line shows either the reference eigenvalue (\num[group-digits=false]{0.997520} or the Shannon entropy at the end of the simulation for the power method, or the mean Shannon entropy for Arnoldi's method.  The results from the power method are shown in Figure \ref{fig:50mfpPower} and in Figure \ref{fig:50mfpArnoldi} for Arnoldi's method.  
+\begin{figure*}[h]\centering
+    \subfloat[Power method.]{\label{fig:50mfpPower}\input{Figures/50mfpPower} }
+
+    \subfloat[Arnoldi's method.]{\label{fig:50mfpArnoldi}\input{Figures/50mfpArnoldi} }
+    \caption{Convergence of eigenvalue estimate and Shannon entropy for 50 mfp thick, homogeneous slab.  The dashed line is the S$_{\mathrm{N}}$ eigenvalue solution for the fundamental eigenvalue ($\lambda_0 = 0.997520$) or the Shannon entropy.}
+    \label{fig:Homogeneous}
+\end{figure*}
+
+We can see that the Shannon entropy is converged in both Arnoldi's method and the power method and the eigenvalue estimates have converged to the reference solution.  Arnoldi's method has converged in both the eigenvalue and Shannon entropy immediately (1 restart, or 25 iterations) while the power method requires approximately 200 iterations for convergence.  From this data we can say that the power method must discard the first 200 iterations so as not to pollute the result with bad eigenvalue estimates.  Arnoldi's method need not discard any iterations.  We can see that the standard deviation of the eigenvalue estimates is much smaller for Arnoldi's method than for the power method.  The implications of this are not yet fully realized.  
+
+\subsection{Heterogeneous Slab}
+We now show a simulation with a heterogeneous, 1-D slab with vacuum boundary conditions.  This problem was first proposed by \citet{Kornreich:2002Semi--0} and also used by \citet{Ueki:2005Stati-0} to demonstrate the difficulty of eigenvalue and fission source convergence.  The heterogeneous slab has five regions of widths \num{1.0}, \num{1.0}, \num{5.0}, \num{1.0}, and \SI{1.0}{cm}; the full width of the slab is \SI{9.0}{cm}.  The materials are of three types, fissile, scatterer, and absorber.  The cross sections for the material types are (all in units of \si{\per\cubic\centi\meter})
+\begin{description}
+    \item[Fission] $\Sigma_t = 1.0$, $\Sigma_s = 0.8$, $\Sigma_{\gamma} = 0.1$, \\$\Sigma_f = 0.1$, $\nu = 3.0$;
+    \item[Scatter] $\Sigma_t = 1.0$, $\Sigma_s = 0.8$, $\Sigma_a = 0.2$;
+    \item[Absorber] $\Sigma_t = 1.0$, $\Sigma_s = 0.1$, $\Sigma_a = 0.9$.
+\end{description}
+The materials are setup with the thick slab in the center made of absorber material surrounded by thin slabs of scatterer material; the outer slabs are the fissile material and are surrounded by a vacuum.  A graphical representation of this geometry is shown in Figure \ref{fig:HeteroGeometry}.
+
+We demonstrate the convergence of the fundamental eigenvalue and the fission source for Arnoldi's method and the power method for two variations of this geometry.  The first is an asymmetric variation of the geometry described above; the right most slab has a width of \SI{1.01}{\centi\meter}.  The other uses the symmetric geometry exactly as described.  The main difference between these two scenarios is a change in the dominance ratio.  The dominance ratio is \num[group-digits=false]{0.999566} for the symmetric problem and \num[group-digits=false]{0.992504} for the asymmetric problem.  Because the dominance ratio is larger for the symmetric problem, we expect to see a slower convergence.
+
+In both the symmetric and asymmetric geometries, the initial fission source is solely in the left-most bin.  This makes fission source convergence particularly difficult because neutrons that enter the absorber region have a low probability of traversing the region to cause a fission in the fissile region on the right of the slab.  This difficulty is the same for both Arnoldi's method and the power method so the comparison between the methods is fair.  For these simulations, \num{1E6} particles are tracked in each iteration with Arnoldi's method using 10 iterations per restart.
+
+\begin{figure*}[h]\centering
+    \includegraphics[width=\textwidth,keepaspectratio]{Figures/MultimediaCartoon}
+    \caption{Diagram of heterogeneous slab geometry.  The symmetric simulation is shown in this figure.  For the asymmetric, heterogeneous simulation, the right-most region will have a width of 1.01 mfp.}
+    \label{fig:HeteroGeometry}
+\end{figure*}
+
+The results for the asymmetric problem are shown first in Figure \ref{fig:Asymmetric}; the power method results are shown in Figure \ref{fig:AsymmetricPower} and the results from Arnoldi's method are shown in Figure \ref{fig:AsymmetricArnoldi}.  As in the homogeneous results the dashed line shows the reference eigenvalue\cite{Kornreich:2002Semi--0} of \num[group-digits=false]{0.427425} or the Shannon entropy at the end of the simulation for the power method and the mean Shannon entropy for Arnoldi's method.
+
+\begin{figure*}[h]\centering
+    \subfloat[Power method.]{\label{fig:AsymmetricPower}\input{Figures/AsymmetricPower}}
+
+    \subfloat[Arnoldi's method.]{\label{fig:AsymmetricArnoldi}\input{Figures/AsymmetricArnoldi}}
+    \caption{Convergence of eigenvalue estimate and Shannon entropy for asymmetric geometry.  The dashed line is the fundamental eigenvalue ($\lambda_0 = 0.427425$ \cite{Kornreich:2002Semi--0}), or the Shannon entropy at the end of the simulation for the power method and mean Shannon entropy for Arnoldi's method.}
+    \label{fig:Asymmetric}
+\end{figure*}
+
+The convergence of the eigenvalue using the power method requires 800--1000 iterations while the Shannon entropy doesn't converge for approximately 1250 iterations.  In comparison, the eigenvalue estimates and Shannon entropy are immediately converged for Arnoldi's method.
+
+The results for the symmetric problem (shown in Figure \ref{fig:Symmetric}) demonstrate a slightly different behavior for the power method.  The power method convergence is shown in Figure \ref{fig:SymmetricPower} and Arnoldi's method convergence is shown in Figure \ref{fig:SymmetricArnoldi}.  The eigenvalue appears to have converged immediately for both the power method and Arnoldi's method, in addition the Shannon entropy has converged immediately for Arnoldi's method as in the asymmetric problem.  However, the Shannon entropy convergence for the power method takes much longer to converge.  We ran the power method for 2000 more iterations than was run for Arnoldi's method and it appears that the Shannon entropy may be approaching convergence after that many iterations, but it is difficult to say whether it has converged.  
+
+
+\begin{figure*}[h]\centering
+    \subfloat[Power Method]{\label{fig:SymmetricPower}\input{Figures/SymmetricPower}}
+
+    \subfloat[Arnoldi's Method]{\label{fig:SymmetricArnoldi}\input{Figures/SymmetricArnoldi}}
+    \caption{Convergence of eigenvalue estimate and Shannon entropy for symmetric geometry.  The dashed line is the fundamental eigenvalue ($\lambda_0 = 0.424316$ \cite{Kornreich:2002Semi--0}), or the Shannon entropy at the end of the simulation for the power method and mean Shannon entropy for Arnoldi's method.}
+    \label{fig:Symmetric}
+\end{figure*}
+
+\section{Conclusions}\label{sec:Conclusions}
+Previous papers\cite{Conlin:2009Secon-0,Conlin:2008Arnol-0,Conlin:2009Relax-0} have shown that a Monte Carlo implementation Arnoldi's method can accurately calculate the fundamental eigenvalue as well as the first two higher-order eigenmodes of 1-D slab geometries.  In this paper we have shown that the eigenvalue and fission source (as measured by the Shannon entropy) converges immediately for Arnoldi's method.  In comparison---as was seen by \citet{Ueki:2005Stati-0}---the power method may need several hundred iterations, or more, before either the eigenvalue or fission source has converged.
+
+In all the examples in this paper we see that the noise in the Shannon entropy is much smaller for the power method than for Arnoldi's method.  In the power method we see a very systematic trend towards a converged value of the Shannon entropy with little noise superimposed on that trend.  Arnoldi's method, on the other hand, has no trend towards a converged Shannon entropy (it is converged right away), but the noise in the Shannon entropy is greater than that for the power method.  The full implication of this is not fully understood, but may indicate that the correlation between Arnoldi restarts is less than the correlation between power method iterations.  This stands to reason as there are many Arnoldi iterations within each restart causing the fission source in the last iteration to be less coupled to the initial fission source for the iteration.
+
+Arnoldi's method can save considerable computational expense because it does not require inactive Monte Carlo iterations in order to converge the fission source and the fundamental eigenvalue.  Because of it's superior convergence capabilities, Arnoldi's method may be useful in a Monte Carlo criticality code in converging the eigenvalue and the fission source with the code switching to the traditional power method after convergence is finished.  
+
+We have not demonstrated using Arnoldi's method for 3-D or energy dependant calculations, but the mathematical description of the method fully supports multi-dimensional calculations as long as the inner product between two fission sources has been defined.  For this paper we have discretized the fission source in order to calculate the inner product between two fission sources.  As discussed in Section \ref{sec:InnerProduct}, the fission source may not have to be discretized.  Further work on this remains to be done.
+
+\bibliography{References}
+%\end{multicols}
+\end{doublespace}
+\end{document}

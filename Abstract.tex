@@ -1,0 +1,52 @@
+\documentclass{ansnse}
+\usepackage{authblk}
+\usepackage{layouts}
+\usepackage{verbatim}
+\usepackage{todonotes}
+\usepackage[margin=1in]{geometry}
+\usepackage{lipsum}
+\usepackage[tbtags]{amsmath}
+\usepackage[lofdepth=2]{subfig}
+\usepackage{siunitx}
+\usepackage{hyperref}
+\usepackage{bm}
+
+\hypersetup{colorlinks=true,
+citecolor=black,
+linkcolor=black}
+
+% \usepackage[urw-garamond]{mathdesign}
+% \usepackage[sc]{mathpazo}
+% \linespread{1.05}         % Palatino needs more leading (space between lines)
+
+\newcommand{\A}{\ensuremath{\mathcal{A}}}
+\newcommand{\qp}{q^{(+)}(x)}
+\newcommand{\qm}{q^{(-)}(x)}
+\newcommand{\op}[1]{\ensuremath{\bm{\mathsf{#1}}}}
+\newcommand{\dd}{\ensuremath{\mathop{}\!\mathrm{d}}}
+\newcommand{\vP}{\ensuremath{v_{\Pi}}}
+\newcommand{\Lx}{\ensuremath{\Lin_b(x)}}
+\newcommand{\Lin}{\ensuremath{\mathcal{L}}}
+\newcommand{\vL}{\ensuremath{v_{\Lin}}}
+\newcommand{\xmid}{\ensuremath{x_{b,\mathrm{mid}}}}
+
+\setlipsumdefault{1}
+
+\author[1,2]{Jeremy Lloyd Conlin\footnote{\texttt{jlconlin@lanl.gov}}}
+\author[2]{James Paul Holloway}
+\affil[1]{\normalsize\emph{Los Alamos National Laboratory\\
+Los Alamos, NM 87544}}
+\affil[2]{\normalsize\emph{University of Michigan\\
+Ann Arbor, MI  48109}}
+
+\title{\sffamily\bfseries\Large Monte Carlo Application of Arnoldi's Method for Acceleration of Eigenvalue and Fission Source Convergence}
+
+\date{}
+
+\begin{document}
+\begin{doublespace}
+\ansabstract{This paper introduces the explicitly restarted Arnoldi's method for calculating eigenvalues and eigenvectors in a Monte Carlo criticality calculation.  Arnoldi's method is described along with the power method.  The power method has been used for decades for Monte Carlo criticality calculations despite the availability of other algorithms with better convergence properties.  The Monte Carlo application of the transport-fission operator of the Boltzmann transport equation is defined and the Monte Carlo implementation of both Arnoldi's method and the power method are described.  A brief discussion of eigenvalue and fission source convergence is given.  Numerical simulations of 1-D slab geometries are presented, demonstrating the convergence of both the eigenvalue and fission source (as measured by the Shannon entropy) for both Arnoldi's method and the power method.  The results show that Arnoldi's method does not need to discard iterations like the power method because both the eigenvalue and fission source appear to converge immediately, even for problems with high dominance ratios.
+}
+\end{doublespace}
+\end{document}
+
